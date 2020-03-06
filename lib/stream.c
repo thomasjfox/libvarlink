@@ -64,7 +64,7 @@ static void move_rest(uint8_t **bufferp, unsigned long *startp, unsigned long *e
 
 long varlink_stream_flush(VarlinkStream *stream) {
         long n;
-
+again:
         n = write(stream->fd,
                   stream->out + stream->out_start,
                   stream->out_end - stream->out_start);
@@ -72,6 +72,9 @@ long varlink_stream_flush(VarlinkStream *stream) {
         switch (n) {
                 case -1:
                         switch (errno) {
+                                case EINTR:
+                                        goto again;
+
                                 case EAGAIN:
                                         break;
 
@@ -148,16 +151,33 @@ long varlink_stream_bridge(int signal_fd, VarlinkStream *client_in, VarlinkStrea
                         } else {
                                 goto out;
                         }
-
+read_again:
                         r = read(in, buf, 8192);
-                        if (r <= 0)
-                                goto out;
+                        if (r <= 0) {
+                                switch (errno) {
+                                        case EINTR:
+                                                goto read_again;
+                                        default:
+                                                goto out;
+                                }
+                        }
 
                         towrite = r;
                         while (towrite) {
+write_again:
                                 r = write(out, buf, towrite);
                                 if (r <= 0)
-                                        goto out;
+                                        switch (errno) {
+                                                case EINTR:
+                                                        goto write_again;
+
+                                                case EAGAIN:
+                                                        usleep(10000);
+                                                        goto write_again;
+
+                                                default:
+                                                        goto out;
+                                        }
                                 towrite -= r;
                         }
 
@@ -188,7 +208,7 @@ long varlink_stream_read(VarlinkStream *stream, VarlinkObject **messagep) {
 
                 if (stream->in_end == CONNECTION_BUFFER_SIZE)
                         return -VARLINK_ERROR_INVALID_MESSAGE;
-
+again:
                 n = read(stream->fd,
                          stream->in + stream->in_end,
                          CONNECTION_BUFFER_SIZE - stream->in_end);
@@ -196,6 +216,9 @@ long varlink_stream_read(VarlinkStream *stream, VarlinkObject **messagep) {
                 switch (n) {
                         case -1:
                                 switch (errno) {
+                                        case EINTR:
+                                                goto again;
+
                                         case EAGAIN:
                                                 *messagep = NULL;
                                                 return 0;
