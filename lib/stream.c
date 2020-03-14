@@ -152,6 +152,7 @@ long varlink_stream_bridge(int signal_fd, VarlinkStream *client_in, VarlinkStrea
                                 goto out;
                         }
 read_again:
+                        errno = 0;
                         r = read(in, buf, 8192);
                         if (r <= 0) {
                                 switch (errno) {
@@ -165,6 +166,7 @@ read_again:
                         towrite = r;
                         while (towrite) {
 write_again:
+                                errno = 0;
                                 r = write(out, buf, towrite);
                                 if (r <= 0)
                                         switch (errno) {
